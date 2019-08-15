@@ -1,11 +1,13 @@
 package main
 
 import (
+	goflag "flag"
 	"fmt"
+	"k8s.io/klog"
 
 	"github.com/cermakm/argo-await/common"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
 	gjson "github.com/tidwall/gjson"
 
@@ -17,7 +19,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"os"
-	"path/filepath"
 )
 
 func passFilters(evt *watch.Event, filters ...string) (bool, error) {
@@ -40,21 +41,14 @@ func passFilters(evt *watch.Event, filters ...string) (bool, error) {
 	return true, nil
 }
 
-// ENV VARS
-const (
-	// EnvVarKubeConfig is the path to the Kubernetes configuration
-	EnvVarKubeConfig = "KUBE_CONFIG"
-
-	// EnvVarDebugLog is the env var to turn on the debug mode for logging
-	EnvVarDebugLog = "DEBUG_LOG"
-)
-
 var (
+	log = common.Logger()
+
 	res = &metav1.APIResource{
-		Name:    "images",
-		Group:   "image.openshift.io",
+		Name:    "configmaps",
+		Group:   "",
 		Version: "v1",
-		Kind:    "Image",
+		Kind:    "ConfigMap",
 	} // FIXME
 
 	namespace string
@@ -62,37 +56,41 @@ var (
 )
 
 func init() {
-	log.SetLevel(log.DebugLevel)
-	log.SetFormatter(&log.TextFormatter{
-		TimestampFormat:  "2019-08-08 12:00:00",
-		FullTimestamp:    true,
-		ForceColors:      true,
-		QuoteEmptyFields: true,
-	})
-
 	flag.StringVarP(&namespace, "namespace", "n", "", "namespace to watch")
 	flag.StringSliceVarP(&filters, "filter", "f", []string{}, "resource filter to be passed to jq processor")
+
+	// initialize klog flags
+	flagset := goflag.CommandLine
+	klog.InitFlags(flagset)
+
+	flag.CommandLine.AddGoFlagSet(flagset)
+	flag.CommandLine.SortFlags = false
 
 	flag.Parse()
 }
 
 func main() {
-	// FIXME: Debug
-	var kubeConfig = filepath.Join(
-		os.Getenv("HOME"), ".kube", "config",
-	)
-	// kubeConfig, _ := os.LookupEnv(os.EnvVarKubeConfig)
+	kubeConfig, _ := os.LookupEnv(common.EnvVarKubeConfig)
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	if err != nil {
+		log.WithField("config", config).Panic(err)
+	}
 	config.ContentConfig.GroupVersion = &schema.GroupVersion{
 		Group:   res.Group,
 		Version: res.Version,
 	}
-
-	if err != nil {
-		log.Panic(err)
-	}
 	log.WithField("kubeconfig", kubeConfig).Debugf("Kubernetes config loaded.")
+
+	if namespace == "" {
+		ns, _, err := clientcmd.DefaultClientConfig.Namespace()
+		if err != nil {
+			// cannot proceed with empty namespace
+			log.Panic("Namespace was not provided and could not be determined.")
+		}
+		log.WithField("namespace", ns).Info("Setting default namespace.")
+		namespace = ns
+	}
 
 	dynamicClient := dynamic.NewForConfigOrDie(config)
 
@@ -108,7 +106,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	log.WithFields(log.Fields{
+	log.WithFields(logrus.Fields{
 		"group":   res.Group,
 		"version": gvr.Version,
 		"kind":    res.Kind,
@@ -118,7 +116,7 @@ func main() {
 		case item := <-watchInterface.ResultChan():
 			itemJSON := common.FormatJSON(item)
 
-			contextLogger := log.WithFields(log.Fields{
+			contextLogger := log.WithFields(logrus.Fields{
 				"type":     item.Type,
 				"resource": item.Object.GetObjectKind().GroupVersionKind(),
 			})
