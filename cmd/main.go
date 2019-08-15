@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/cermakm/kube-await/common"
+	"github.com/cermakm/argo-await/common"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"

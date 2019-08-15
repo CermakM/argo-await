@@ -1,4 +1,4 @@
-module github.com/cermakm/kube-await
+module github.com/cermakm/argo-await
 
 go 1.12
 
