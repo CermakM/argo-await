@@ -23,11 +23,17 @@ all-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make all
 
 build:
-	rm -r ${DIST_DIR}
+	- rm -r ${DIST_DIR}
 	GO111MODULE=on go build -v -ldflags '${LDFLAGS}' -o ${DIST_DIR}/${EXEC} ./cmd
 
 build-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make build
+
+build-image: build
+	docker build --rm -t ${EXEC}:latest ${CURRENT_DIR}
+
+build-image-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make build-image
 
 deploy: build
 ifeq ($(BUILDCONFIG_EXISTS), 1)
