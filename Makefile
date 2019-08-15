@@ -19,9 +19,15 @@ BUILDCONFIG_EXISTS := $(shell oc get -n ${NAMESPACE} buildconfigs ${BUILDCONFIG}
 all: build deploy
 .PHONY: all
 
+all-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make all
+
 build:
 	rm -r ${DIST_DIR}
 	GO111MODULE=on go build -v -ldflags '${LDFLAGS}' -o ${DIST_DIR}/${EXEC} ./cmd
+
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make build
 
 deploy: build
 ifeq ($(BUILDCONFIG_EXISTS), 1)
@@ -29,3 +35,6 @@ ifeq ($(BUILDCONFIG_EXISTS), 1)
 	oc -n ${NAMESPACE} new-build --strategy docker --binary --docker-image scratch --name ${BUILDCONFIG}
 endif
 	oc -n ${NAMESPACE} start-build argo-await --from-dir . --follow
+
+deploy-linux: 
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make deploy
