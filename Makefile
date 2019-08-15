@@ -3,6 +3,12 @@ PACKAGE=github.com/CermakM/argo-await
 CURRENT_DIR=$(shell pwd)
 DIST_DIR?=${CURRENT_DIR}/dist
 
+# VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+GIT_COMMIT=$(shell git rev-parse HEAD)
+GIT_TAG=$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi)
+GIT_TREE_STATE=$(shell if [ -z "`git status --porcelain`" ]; then echo "clean" ; else echo "dirty"; fi)
+
 override LDFLAGS += \
   -X ${PACKAGE}.version=${VERSION} \
   -X ${PACKAGE}.buildDate=${BUILD_DATE} \
