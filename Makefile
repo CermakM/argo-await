@@ -15,11 +15,13 @@ override LDFLAGS += \
   -X ${PACKAGE}.gitCommit=${GIT_COMMIT} \
   -X ${PACKAGE}.gitTreeState=${GIT_TREE_STATE}
 
-EXEC                = argo-await
-NAMESPACE          ?= $(shell oc whoami --show-context | cut -d'/' -f 1)     # OpenShift Namespace
+OBSERVER           ?= argo-await-observer
+NAMESPACE          ?= $(shell oc whoami --show-context | cut -d'/' -f 1)
 
-BUILDCONFIG        ?= argo-await  # OpenShift Build Config name
+BUILDCONFIG        ?= ${OBSERVER}-buildconfig
 BUILDCONFIG_EXISTS := $(shell oc get -n ${NAMESPACE} buildconfigs ${BUILDCONFIG} &> /dev/null && echo 0 || echo 1)
+
+IMAGESTREAM        ?= ${OBSERVER}
 
 .PHONY: all
 all: build image
@@ -28,27 +30,23 @@ all: build image
 all-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make all
 
-.PHONY: build
-build:
-	- rm -r ${DIST_DIR}
-	GO111MODULE=on go build -v -ldflags '${LDFLAGS}' -o ${DIST_DIR}/${EXEC} ./cmd
 
-.PHONY: build-linux
-build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make build
+.PHONY: observer
+observer:
+	GO111MODULE=on go build -v -ldflags '${LDFLAGS}' -o ${DIST_DIR}/${OBSERVER} ./observer/cmd
 
-docker: build
-	docker build --rm -t ${EXEC}:latest ${CURRENT_DIR}
+.PHONY: observer-linux
+observer-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make observer
 
-docker-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make docker
+observer-image: observer-linux
+	docker build --rm -t ${OBSERVER}:latest -f ${CURRENT_DIR}/observer/Dockerfile .
 
-image: build
+observer-image-openshift: archive = dist.tar.gz
+observer-image-openshift: observer-linux
 ifeq ($(BUILDCONFIG_EXISTS), 1)
-	$(info  Creating build config ${BUILDCONFIG} )
-	oc -n ${NAMESPACE} new-build --strategy docker --binary --docker-image scratch --name ${BUILDCONFIG}
+	oc -n ${NAMESPACE} new-build --strategy docker --binary --name ${BUILDCONFIG} --to ${IMAGESTREAM}
 endif
-	oc -n ${NAMESPACE} start-build argo-await --from-dir . --follow
-
-image-linux: 
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make image
+	tar -czf ${archive} $(shell basename ${DIST_DIR}) \
+	    -C observer/ --add-file Dockerfile
+	oc -n ${NAMESPACE} start-build ${BUILDCONFIG} --from-archive ${archive} --follow
